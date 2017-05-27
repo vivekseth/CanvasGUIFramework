@@ -94,6 +94,7 @@ function setFrame(node, rect) {
     node.style.height = rect.size.height;
 }
 
+// TODO(vivek): frame of document.body should be the entire size. its bounds should take care of the visibleRect being smaller. Not sure how to handle resizing a document, obviously subelements should adapt their sizes to fit. 
 function getFrame(node) {
     // TODO(vivek): there is no concept of a transform so this is easy.
     if (!node || node == document) {
@@ -103,10 +104,6 @@ function getFrame(node) {
         var bbox = node.getBoundingClientRect();
         return CGRectMake(bbox.left, bbox.top, node.clientWidth, node.clientHeight);
     }
-    // else if (node == document.body) {
-    //     var bbox = node.getBoundingClientRect();
-    //     return CGRectMake(bbox.left, bbox.top, node.clientWidth, node.clientHeight);   
-    // }
     else {
         var absoluteRect = CGRectFromBBox(node.getBoundingClientRect());
         if (node == document.body) {
