@@ -98,23 +98,6 @@ function loadRootView() {
     return rootView;
 }
 
-function drawViews(timestamp) {
-   // console.log(timestamp);
-
-    var s = window.rootView._subviews[1];
-    var frame = s.getFrame();
-    var t = CGTransformTranslate(-frame.size.width / 2, -frame.size.height / 2);
-    t = CGTransformConcat(CGTransformRotate(Math.PI * 0.01), t);
-    t = CGTransformConcat(CGTransformTranslate(frame.size.width / 2, frame.size.height / 2), t);
-    s.setTransform(CGTransformConcat(t, s._transform));
-
-    ctx = window.canvas.getContext("2d");
-    ctx.clearRect(0, 0, window.canvas.width, window.canvas.height);
-    window.rootView.drawRect(ctx);
-
-    requestAnimationFrame(drawViews);
-}
-
 function View() {
     // Private
     this._bounds = CGRectZero();
@@ -227,7 +210,6 @@ function View() {
 
             t = curve(tLinear);
 
-            console.log(startTime, timestamp, relativeTimestamp, duration, t);
             callback(that, t, relativeTimestamp, duration);
             if (relativeTimestamp < duration) {
                 requestAnimationFrame(step);
