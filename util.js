@@ -74,7 +74,7 @@
 
 
 
-//// UIKIT UTIL
+//// GUI UTIL
 
 
 // TODO(vivek): need a new name for my rect class. 
