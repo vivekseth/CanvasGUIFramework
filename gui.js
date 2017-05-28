@@ -6,6 +6,24 @@ docReady(function() {
     // Setup Event Listenders
     window.addEventListener('resize', windowResize);
     window.rootView = loadRootView();
+
+    window.renderer = new Renderer(window.canvas, window.rootView);
+    window.renderer.begin();
+
+    var anim = new Animation(null, 1.0 * 1000, window.rootView._subviews[1], function(context, t, relativeTimestamp, duration) {
+        var view = context;
+        var angle = t * 2 * Math.PI;
+
+        var frame = view.getFrame();
+        var trans = CGTransformTranslate(-frame.size.width / 2, -frame.size.height / 2);
+        trans = CGTransformConcat(CGTransformRotate(angle), trans);
+        trans = CGTransformConcat(CGTransformTranslate(frame.size.width / 2, frame.size.height / 2), trans);
+        view.setTransform(trans);
+    }, function() {
+        anim.startTime = null;
+        window.renderer.addAnimation(anim);
+    });
+    window.renderer.addAnimation(anim);
 })
 
 //! App Delegate
@@ -42,7 +60,22 @@ function windowDidLoad() {
 
 function windowResize() {
     var canvas = document.getElementById('main-canvas');
-    setFrame(canvas, CGRectInset(getBounds(document.body), 20, 20));
+    setFrame(canvas, CGRectInset(getBounds(document.body), 2, 2));
+    window.rootView.setFrame(CGRectInset(getBounds(canvas), 100, 100));
+
+    if (window.renderer.animations.length <= 0) {
+        var anim = new Animation(AnimationCurveInOutQuad, 1.0 * 1000, window.rootView._subviews[1], function(context, t, relativeTimestamp, duration) {
+            var view = context;
+            var angle = t * 2 * Math.PI;
+
+            var frame = view.getFrame();
+            var trans = CGTransformTranslate(-frame.size.width / 2, -frame.size.height / 2);
+            trans = CGTransformConcat(CGTransformRotate(angle), trans);
+            trans = CGTransformConcat(CGTransformTranslate(frame.size.width / 2, frame.size.height / 2), trans);
+            view.setTransform(trans);
+        });
+        window.renderer.addAnimation(anim);
+    }
 }
 
 function loadRootView() {
@@ -57,74 +90,137 @@ function loadRootView() {
     subview2.setFrame(CGRectMake(160, 30, 100, 100));
     rootView.addSubview(subview2);
 
-    subview2.animateWithCurveAndDuration(AnimationCurveInOutQuad, 1.0 * 1000, function(view, t, relativeTimestamp, duration) {
-        // TODO(vivek): can I use an abstraction to do the interpolation for me? How do CA animations work? How do they interpolate transforms? 
-        var angle = t * 2 * Math.PI;
-
-        var frame = view.getFrame();
-        var trans = CGTransformTranslate(-frame.size.width / 2, -frame.size.height / 2);
-        trans = CGTransformConcat(CGTransformRotate(angle), trans);
-        trans = CGTransformConcat(CGTransformTranslate(frame.size.width / 2, frame.size.height / 2), trans);
-        view.setTransform(trans);
-
-        // TODO(vivek): can I coalesce animations to that only one root function is responsible for drawing? 
-        // One root object should be responsible for calling requestAnimationWithBlock
-        // When the callback triggers, it fetches callbacks for all running animatsions and call them to update values. 
-        // Then it redraws the whole canvas. (If possible I should look into only redrawing dirty rects).
-        // Finally it calls requestAnimationBlock IF there are animations that need to continue 
-        // To summarize: 
-        //  1. root object owns requestAnimationBlock calling
-        //  2. When root callback triggers, fetch current animations and purge outdated animations. 
-        //  3. Call all animation blocks to update values
-        //  4. Redraw dirty regions of canvas (for now the whole thing)
-        //  5. If there are remaining animations, schedule another animation block
-        ctx = window.canvas.getContext("2d");
-        ctx.clearRect(0, 0, window.canvas.width, window.canvas.height);
-        window.rootView.drawRect(ctx);
-    })
-
-
-    subview.animateWithCurveAndDuration(AnimationCurveInOutQuad, 1.0 * 1000, function(view, t, relativeTimestamp, duration) {
-        var frame = view.getFrame();
-        var trans = CGTransformTranslate(130 * t, 100 * t);
-        view.setTransform(trans);
-
-        ctx = window.canvas.getContext("2d");
-        ctx.clearRect(0, 0, window.canvas.width, window.canvas.height);
-        window.rootView.drawRect(ctx);
-    })
-
+    var subview3 = new View();
+    subview3.setFrame(CGRectMake(0, 0, 100, 100));
+    subview3.setTransform(CGTransformScale(0.5, 0.5));
+    subview2.addSubview(subview3);
 
     return rootView;
+}
+
+function Renderer(canvas, view) {
+    console.log(canvas, view)
+
+    this.canvas = canvas;
+    this.view = view;
+    this.animations = [];
+
+    this.render = function(that, timestamp) {
+        // if (!this.view) {
+        //     return;
+        // }
+
+        // 1. Layout if needed. 
+        if (that.view._needsLayout) {
+            that.view._layoutRecursively();
+        }
+
+        // 2. Run Animations
+        var animationsCopy = that.animations.slice();
+        for (var i=0; i<animationsCopy.length; i++) {
+            var anim = animationsCopy[i];
+            anim.callback(timestamp);
+        }
+
+        // 3. Redraw if needed
+        if (that.view._needsRedraw || this.animations.length > 0) {
+            renderView(that);
+        }
+
+        // Finally, Schedule next run loop iteration
+        that.scheduleRender()
+    }
+
+    function renderView(that) {
+        ctx = that.canvas.getContext("2d");
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        that.view.drawRect(ctx);
+    }
+
+    this.begin = function() {
+        this.scheduleRender();
+    }
+
+    this.scheduleRender = function() {
+        var that = this;
+        requestAnimationFrame(function(timestamp){
+            that.render(that, timestamp);
+        });
+    }
+
+    this.addAnimation = function(anim) {
+        this.animations.push(anim);
+        anim.delegate = this;
+    }
+
+    this.purgeAnimation = function(anim) {
+        var index = this.animations.indexOf(anim);
+        this.animations.splice(index, 1);
+        anim.delegate = null;
+    }
+}
+
+function Animation(curve, duration, context, interpolationFunction, completionBlock) {
+    this.curve = curve || function(x) {return x};
+    this.duration = duration;
+    this.startTime = null;
+    this.interpolationFunction = interpolationFunction;
+    this.context = context;
+    this.delegate = null;
+    this.completionBlock = completionBlock;
+
+    // this must be called in the conext of requestAnimationFrame
+    this.callback = function(timestamp) {
+        this.startTime = this.startTime ? this.startTime : timestamp;
+        var relativeTimestamp = (timestamp - this.startTime);
+        var tLinear = relativeTimestamp / this.duration;
+        if (tLinear <= 1.0) {
+            var t = this.curve(tLinear);
+            this.interpolationFunction(context, t, relativeTimestamp, duration);
+        }
+        else {
+            if (this.delegate) {
+                this.delegate.purgeAnimation(this);
+            }
+            if (this.completionBlock) {
+                this.completionBlock();
+            }
+        }
+    }
 }
 
 function View() {
     // Private
     this._bounds = CGRectZero();
     this._frame = CGRectZero();
+    this._transform = CGTransformIdentity();
     this._subviews = [];
     this._needsLayout = false;
-    this._transform = CGTransformIdentity(); // TODO(vivek)
+    this._needsRedraw = false;
 
     // Public
     this.superview = null;
 
     // Private Methods
-    this.setFrameTransform = function(ctx) {
-        // sx kx tx 
-        // ky sy ty
-        //  0  0  1
-
-        // a c e
-        // b d f
-        // 0 0 1
-        ctx.transform(1, 0, 0, 1, this._frame.origin.x, this._frame.origin.y)
+    this._layoutRecursively = function() {
+        this.layoutSubviews();
+        for (var i=0; i<this._subviews.length; i++) {
+            this._subviews[i].layoutSubviews()
+        }
     }
 
     // Methods
+    this.setNeedsRedraw = function() {
+        this._needsRedraw = true;
+    }
+
     this.drawRect = function(ctx, rect) {
         ctx.save();
-        this.setFrameTransform(ctx);
+
+        // Transform from superview CoordinateSpace to this view's coordinate space
+        ctx.transform.apply(ctx, CGTransformTranslate(this._frame.origin.x, this._frame.origin.y));
+
+        // Apply extra transform if needed
         ctx.transform.apply(ctx, this._transform);
 
         for (var i=0; i<this._subviews.length; i++) {
@@ -140,46 +236,65 @@ function View() {
             this._bounds.size.width, 
             this._bounds.size.height);
 
+        this._needsRedraw = false;
+
         ctx.restore();
     };
+    
     this.setNeedsLayout = function() {
         this._needsLayout = true;
+        if (this.superview) {
+            this.superview.setNeedsLayout();
+        }
     }
+    
     this.layoutSubviews = function() {
-
-        // TODO(vivek): need an implementation here..
-        // Might need a queue of things to layout? 
-
+        // TODO(vivek): Need a way to call super implementation in subviews. 
         this._needsLayout = false;
     };
 
-    this.sizeThatFits = function(size) {return size;}
+    this.sizeThatFits = function(size) {
+        return size;
+    }
+
     this.getFrame = function() {
         return CGRectCopy(this._frame);
     }
 
-    // TODO(vivek): this seems suspect....
     this.setFrame = function(frame) {
         this._frame = CGRectCopy(frame);
         var bounds = CGRectCopy(frame);
+        // TODO(vivek): this seems suspect....
         bounds.origin = CGPointZero();
         this._bounds = bounds;
         this.setNeedsLayout();
+        this.setNeedsRedraw();
     }
 
     this.getBounds = function() {
         return CGRectCopy(this._bounds);
     }
 
+    this.setBounds = function(bounds) {
+        this._bounds = CGRectCopy(bounds);
+        var frame = CGRectCopy(bounds);
+        frame.origin = CGPointCopy(this._frame.origin);
+        this._frame = frame;
+        this.setNeedsLayout();
+        this.setNeedsRedraw();
+    }
+
     this.setTransform = function(t) {
         this._transform = t;
         this.setNeedsLayout();
+        this.setNeedsRedraw();
     }
 
     this.addSubview = function(view) {
         this._subviews.push(view);
         view.superview = this;
         this.setNeedsLayout();
+        this.setNeedsRedraw();
     }
 
     this.removeFromSuperview = function() {
@@ -190,6 +305,7 @@ function View() {
         var index = this.superview.indexOf(this);
         this.superview._subviews.splice(index, 1);
         this.superview.setNeedsLayout();
+        this.superview.setNeedsRedraw();
         this.superview = null;
     }
 
@@ -222,23 +338,37 @@ function View() {
 /*
 View
     - drawRect:
-- layoutSubviews:
-- sizeThatFits
-
+    - layoutSubviews:
+    - sizeThatFits
 - hitTest
 - pointInside
-
 - convertXtoView
 - convertXfromView
-
     - setFrame:
     - getFrame
     - getBounds
-- setBounds???
+    - setBounds
     - addSubview
     - removeFromSuperview
     - superview
+- addGestureRecognizer
 
+WindowController
+- windowDidLoad
+- windowDidAppear
+- windowDidDisappear
+- loadRootView
+- windowDidResize
+
+    RenderController
+    - animateWithCurveAndDuration
+    - animateWithDuration
+    - animateEaseInOutWithDuration
+    - _render ??
+
+GestureRecognizer
+- types: Click, DoubleClick, Hover, RightClick, MouseEnteredFrame? 
+- 
 
 */
 

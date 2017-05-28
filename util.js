@@ -83,6 +83,7 @@
 
 
 //! CGRect
+
 function CGRectZero() {
     return CGRectMake(0, 0, 0, 0);
 }
@@ -129,6 +130,8 @@ function CGRectCopy(rect) {
     return JSON.parse(JSON.stringify(rect));
 }
 
+//! CGTransform
+
 function CGPointMake(x, y) {
     return {x: x, y: y}
 }
@@ -136,6 +139,12 @@ function CGPointMake(x, y) {
 function CGPointZero() {
     return CGPointMake(0, 0);
 }
+
+function CGPointCopy(point) {
+    return {x: point.x, y: point.y};
+}
+
+//! CGTransform
 
 function CGTransformIdentity() {
     return [1, 0, 0, 1, 0, 0];
